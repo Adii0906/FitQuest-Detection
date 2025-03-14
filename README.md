@@ -19,14 +19,9 @@ Welcome to **FitQuest Detection** – your ultimate fitness companion! This app 
    pip install -r requirements.txt
 
    Run the App:
-
-bash
-Copy
-streamlit run app.py
-Start Tracking:
+   streamlit run app.py
 
 Choose an exercise (Push-up or Squat).
-
 Set your goal.
 
 Hit Start Tracking and let FitQuest do the rest!
