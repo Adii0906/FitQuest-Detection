@@ -2,7 +2,7 @@ import streamlit as st
 import cv2
 import mediapipe as mp
 import numpy as np
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 import av
 
 # Initialize MediaPipe Pose
@@ -23,7 +23,7 @@ def calculate_angle(a, b, c):
     
     return angle
 
-class PoseTracker(VideoTransformerBase):
+class PoseTracker(VideoProcessorBase):  # Changed from VideoTransformerBase to VideoProcessorBase
     def __init__(self, task, goal, placeholder):
         self.task = task
         self.goal = goal
@@ -34,9 +34,9 @@ class PoseTracker(VideoTransformerBase):
         self.angle_history = []
         self.visibility_threshold = 0.7
 
-    def transform(self, frame):
-        image = frame.to_ndarray(format="bgr24")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    def recv(self, frame):  # Changed from transform to recv
+        img = frame.to_ndarray(format="bgr24")
+        image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         results = pose.process(image)
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
@@ -116,32 +116,57 @@ class PoseTracker(VideoTransformerBase):
             cv2.putText(image, f"{self.task}s: {self.count}/{self.goal}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         # Update the UI with the current count
-        st.session_state.pushup_count = self.count if self.task == "Push-up" else st.session_state.pushup_count
-        st.session_state.squat_count = self.count if self.task == "Squat" else st.session_state.squat_count
-        self.placeholder.markdown(f"""
-        <div class='quest-box'>
-            <h2>DAILY QUEST - TRAIN TO BECOME A FORMIDABLE COMBATANT</h2>
-            <p class='goal-text'>GOALS</p>
-            <p>- PUSH-UPS [{st.session_state.pushup_count}/100]</p>
-            <p>- SQUATS [{st.session_state.squat_count}/100]</p>
-        </div>
-        """, unsafe_allow_html=True)
+        if self.task == "Push-up":
+            st.session_state.pushup_count = self.count
+        else:
+            st.session_state.squat_count = self.count
+            
+        if self.placeholder:
+            self.placeholder.markdown(f"""
+            <div class='quest-box'>
+                <h2>DAILY QUEST - TRAIN TO BECOME A FORMIDABLE COMBATANT</h2>
+                <p class='goal-text'>GOALS</p>
+                <p>- PUSH-UPS [{st.session_state.pushup_count}/100]</p>
+                <p>- SQUATS [{st.session_state.squat_count}/100]</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-        return image  # Return the processed frame
+        return av.VideoFrame.from_ndarray(image, format="bgr24")  # Changed return format
 
 def track_exercise(task, goal, placeholder):
-    webrtc_streamer(
-        key=f"{task}-tracker",
-        video_transformer_factory=lambda: PoseTracker(task, goal, placeholder),
-        async_transform=True,
-        rtc_configuration=RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}),
+    webrtc_ctx = webrtc_streamer(
+        key=task,  # Simplified key
+        video_processor_factory=lambda: PoseTracker(task, goal, placeholder),  # Changed to video_processor_factory
+        rtc_configuration=RTCConfiguration(
+            {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        ),
+        media_stream_constraints={"video": True, "audio": False},  # Explicitly set video constraints
     )
+    
+    # Return the webrtc context for potential future use
+    return webrtc_ctx
 
 # Initialize session state for push-up and squat counts
 if "pushup_count" not in st.session_state:
     st.session_state.pushup_count = 0
 if "squat_count" not in st.session_state:
     st.session_state.squat_count = 0
+
+# Add custom CSS for the quest box
+st.markdown("""
+<style>
+.quest-box {
+    background-color: #f0f2f6;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-left: 5px solid #ff4b4b;
+}
+.goal-text {
+    font-weight: bold;
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.title("🏆 Quest Tracker - Become a Warrior! 🏋️")
 
@@ -161,13 +186,12 @@ quest_placeholder.markdown(f"""
 task = st.selectbox("Choose Exercise", ["Push-up", "Squat"])
 goal = st.number_input("Set Goal", min_value=1, value=10)
 
-if st.button("Start Tracking", key="start_button"):
-    if task == "Push-up":
-        track_exercise("Push-up", goal, quest_placeholder)
-    elif task == "Squat":
-        track_exercise("Squat", goal, quest_placeholder)
+# Start tracking immediately without a button
+st.write("Camera will start automatically when you select an exercise. Click 'START' in the video frame.")
+webrtc_context = track_exercise(task, goal, quest_placeholder)
 
-if st.button("Reset", key="reset_button"):
+# Reset button
+if st.button("Reset Counts", key="reset_button"):
     st.session_state.pushup_count = 0
     st.session_state.squat_count = 0
     
