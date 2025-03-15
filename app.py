@@ -65,14 +65,10 @@ def track_pushup(goal, pushup_placeholder):
     cap = cv2.VideoCapture(0)
     count = 0
     position = None
-    stable_position_counter = 0
-    
-    # History of positions for stability check
-    angle_history = []
     position_confidence = 0
     
-    # Visibility threshold
-    visibility_threshold = 0.7
+    # Lower visibility threshold
+    visibility_threshold = 0.5
     
     stframe = st.empty()
     while cap.isOpened():
@@ -103,10 +99,12 @@ def track_pushup(goal, pushup_placeholder):
             
             # Check if all key points are visible
             all_visible = True
+            visibility_scores = {}
             for landmark in key_landmarks:
-                if landmarks[landmark.value].visibility < visibility_threshold:
+                visibility = landmarks[landmark.value].visibility
+                visibility_scores[landmark.name] = visibility
+                if visibility < visibility_threshold:
                     all_visible = False
-                    break
             
             if all_visible:
                 # Get key points for push-up tracking
@@ -132,21 +130,9 @@ def track_pushup(goal, pushup_placeholder):
                 # Check if both angles are similar (indicating proper form)
                 angle_diff = abs(left_angle - right_angle)
                 
-                # Add angle to history for stability check
-                angle_history.append(avg_angle)
-                if len(angle_history) > 5:  # Keep only last 5 frames
-                    angle_history.pop(0)
-                
-                # Calculate angle stability
-                angle_stability = 0
-                if len(angle_history) >= 3:
-                    angle_variations = [abs(angle_history[i] - angle_history[i-1]) for i in range(1, len(angle_history))]
-                    avg_variation = sum(angle_variations) / len(angle_variations)
-                    angle_stability = 10 if avg_variation < 5 else 0  # Stable if variation is small
-                
-                # Push-up logic with more robustness
-                if angle_diff < 20 and angle_stability > 0:  # Ensure symmetrical form
-                    if avg_angle > 150:  # Up position (arms mostly extended)
+                # Push-up logic
+                if angle_diff < 20:  # Ensure symmetrical form
+                    if avg_angle > 160:  # Up position (arms mostly extended)
                         if position == "down":
                             position_confidence += 1
                             if position_confidence > 5:  # Require more stability
@@ -190,6 +176,10 @@ def track_pushup(goal, pushup_placeholder):
             cv2.putText(image, f"Angle: {avg_angle:.1f}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
             cv2.putText(image, f"Confidence: {position_confidence}", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
         
+        # Display visibility scores for debugging
+        visibility_text = "Visibility: " + ", ".join([f"{k}: {v:.2f}" for k, v in visibility_scores.items()])
+        cv2.putText(image, visibility_text, (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        
         stframe.image(image, channels="BGR", use_container_width=True)
         
         # Update the UI with the current push-up count
@@ -199,7 +189,6 @@ def track_pushup(goal, pushup_placeholder):
             <h2>DAILY QUEST - TRAIN TO BECOME A FORMIDABLE COMBATANT</h2>
             <p class='goal-text'>GOALS</p>
             <p>- PUSH-UPS [{st.session_state.pushup_count}/{goal}]</p>
-            <p>- SIT-UPS [0/100]</p>
             <p>- SQUATS [{st.session_state.squat_count}/100]</p>
         </div>
         """, unsafe_allow_html=True)
@@ -211,17 +200,15 @@ def track_pushup(goal, pushup_placeholder):
     
     cap.release()
     return False
+
 def track_squat(goal, squat_placeholder):
     cap = cv2.VideoCapture(0)
     count = 0
     position = None
     position_confidence = 0
     
-    # History of positions for stability check
-    angle_history = []
-    
-    # Visibility threshold
-    visibility_threshold = 0.7
+    # Lower visibility threshold
+    visibility_threshold = 0.5
     
     stframe = st.empty()
     while cap.isOpened():
@@ -252,10 +239,12 @@ def track_squat(goal, squat_placeholder):
             
             # Check if all key points are visible
             all_visible = True
+            visibility_scores = {}
             for landmark in key_landmarks:
-                if landmarks[landmark.value].visibility < visibility_threshold:
+                visibility = landmarks[landmark.value].visibility
+                visibility_scores[landmark.name] = visibility
+                if visibility < visibility_threshold:
                     all_visible = False
-                    break
             
             if all_visible:
                 # Get key points for squat tracking
@@ -281,23 +270,8 @@ def track_squat(goal, squat_placeholder):
                 # Check if both angles are similar (indicating proper form)
                 angle_diff = abs(left_angle - right_angle)
                 
-                # Add angle to history for stability check
-                angle_history.append(avg_knee_angle)
-                if len(angle_history) > 5:  # Keep only last 5 frames
-                    angle_history.pop(0)
-                
-                # Calculate angle stability
-                angle_stability = 0
-                if len(angle_history) >= 3:
-                    angle_variations = [abs(angle_history[i] - angle_history[i-1]) for i in range(1, len(angle_history))]
-                    avg_variation = sum(angle_variations) / len(angle_variations)
-                    angle_stability = 10 if avg_variation < 5 else 0  # Stable if variation is small
-                
-                # Additional check for proper squat form - hips should be near same height as knees in squat position
-                proper_depth = True
-                
-                # Squat logic with more robustness
-                if angle_diff < 20 and angle_stability > 0 and proper_depth:  # Ensure symmetrical form
+                # Squat logic
+                if angle_diff < 20:  # Ensure symmetrical form
                     if avg_knee_angle > 160:  # Standing position
                         if position == "down":
                             position_confidence += 1
@@ -315,7 +289,7 @@ def track_squat(goal, squat_placeholder):
                             status_text = "Standing - Go down"
                             status_color = (0, 255, 0)  # Green for up
                             
-                    elif avg_knee_angle < 110:  # Squat position
+                    elif avg_knee_angle < 100:  # Squat position (adjust this threshold as needed)
                         position = "down"
                         position_confidence = 0
                         status_text = "Squat position - Stand up"
@@ -342,6 +316,10 @@ def track_squat(goal, squat_placeholder):
             cv2.putText(image, f"Knee angle: {avg_knee_angle:.1f}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
             cv2.putText(image, f"Confidence: {position_confidence}", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
         
+        # Display visibility scores for debugging
+        visibility_text = "Visibility: " + ", ".join([f"{k}: {v:.2f}" for k, v in visibility_scores.items()])
+        cv2.putText(image, visibility_text, (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        
         stframe.image(image, channels="BGR", use_container_width=True)
         
         # Update the UI with the current squat count
@@ -351,9 +329,7 @@ def track_squat(goal, squat_placeholder):
             <h2>DAILY QUEST - TRAIN TO BECOME A FORMIDABLE COMBATANT</h2>
             <p class='goal-text'>GOALS</p>
             <p>- PUSH-UPS [{st.session_state.pushup_count}/100]</p>
-            <p>- SIT-UPS [0/100]</p>
             <p>- SQUATS [{st.session_state.squat_count}/{goal}]</p>
-            
         </div>
         """, unsafe_allow_html=True)
         
@@ -364,8 +340,6 @@ def track_squat(goal, squat_placeholder):
     
     cap.release()
     return False
-
-
 
 # Initialize session state for push-up and squat counts
 if "pushup_count" not in st.session_state:
@@ -385,7 +359,6 @@ quest_placeholder.markdown(f"""
     <h2>DAILY QUEST - TRAIN TO BECOME A FORMIDABLE COMBATANT</h2>
     <p class='goal-text'>GOALS</p>
     <p>- PUSH-UPS [{st.session_state.pushup_count}/100]</p>
-    <p>- SIT-UPS [0/100]</p>
     <p>- SQUATS [{st.session_state.squat_count}/100]</p>
 </div>
 """, unsafe_allow_html=True)
@@ -398,7 +371,6 @@ if st.button("Start Tracking", key="start_button"):
         success = track_pushup(goal, quest_placeholder)
     elif task == "Squat":
         success = track_squat(goal, quest_placeholder)
-
 
 if st.button("Reset", key="reset_button"):
     st.session_state.pushup_count = 0
