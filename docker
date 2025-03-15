@@ -1,0 +1,26 @@
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim
+
+# Install system dependencies for OpenCV (libGL.so.1)
+RUN apt-get update && apt-get install -y libgl1
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the requirements file into the container
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application code into the container
+COPY . .
+
+# Expose the port for Streamlit
+EXPOSE 8501
+
+# Define environment variable
+ENV STREAMLIT_SERVER_PORT=8501
+
+# Run the Streamlit app when the container launches
+CMD ["streamlit", "run", "app.py"]
